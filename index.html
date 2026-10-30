@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Trade Journal & Calculator</title>
+<style>
+:root{--bg:#f4f5f7;--card:#fff;--ink:#1c2330;--mut:#6b7482;--line:#d5d9e0;--head:#dfe9f5;--win:#e3f1e3;--loss:#f8c9c9;--be:#f2dde6;--acc:#fff200;--pos:#176b2c;--neg:#b3261e;--viol:#7a2bd1;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171c;--card:#1d2128;--ink:#e6e9ef;--mut:#8f98a6;--line:#363c47;--head:#273548;--win:#1f3a26;--loss:#4d2323;--be:#41283a;--acc:#6b6400;--pos:#6fd28a;--neg:#ff8a80;--viol:#c79bff}}
+:root[data-theme="dark"]{--bg:#14171c;--card:#1d2128;--ink:#e6e9ef;--mut:#8f98a6;--line:#363c47;--head:#273548;--win:#1f3a26;--loss:#4d2323;--be:#41283a;--acc:#6b6400;--pos:#6fd28a;--neg:#ff8a80;--viol:#c79bff}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:13px/1.2 "Segoe UI",Roboto,Arial,sans-serif;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:12px;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--card)}
+header h1{font-size:14px;margin:0;font-weight:600;flex:1}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:4px 10px;border-radius:4px;cursor:pointer}
+button:hover{background:var(--head)}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:10px;padding:10px}
+.pane{min-height:0;display:flex;flex-direction:column;gap:8px}
+.scroll{flex:1;min-height:0;overflow:auto;border:1px solid var(--line);background:var(--card)}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid var(--line);padding:0 6px;height:24px;text-align:center;white-space:nowrap}
+th{background:var(--head);font-weight:600;position:sticky;top:0;z-index:1}
+.cap{background:var(--head);font-weight:600;text-align:center;padding:4px;border:1px solid var(--line);border-bottom:0}
+.lbl{text-align:left}
+td input,td select{width:100%;height:23px;border:0;background:transparent;color:inherit;font:inherit;text-align:center;outline:0;padding:0}
+td select{appearance:none;cursor:pointer}
+td input:focus,td select:focus{background:var(--head)}
+.tags{border-radius:10px}
+.w{background:var(--win)}.l{background:var(--loss)}.b{background:var(--be)}.y{background:var(--acc)}
+.p{color:var(--pos)}.n{color:var(--neg)}.v{color:var(--viol);font-weight:600}
+.stack{overflow:auto;display:flex;flex-direction:column;gap:8px;min-height:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.big td{font-weight:600}
+.hint{color:var(--mut);font-size:11px;padding:2px 0}
+@media (max-width:820px){body{height:auto}html,body{height:auto}main{grid-template-columns:1fr}.scroll{max-height:60vh}}
+</style>
+</head>
+<body>
+<header><h1>Trade Journal & Calculator</h1><span class="hint">Auto-saved in this browser</span><button id="clr">Clear all</button></header>
+<main>
+<section class="pane">
+<div class="scroll"><table id="jt"><thead><tr><th style="width:34px">#</th><th>Setup</th><th>Ticker</th><th>% P&amp;L</th><th>Result</th><th>Position</th><th>Gain/Loss</th><th>Portfolio</th></tr></thead><tbody></tbody></table></div>
+<div class="hint">Enter % P&amp;L as +10 or -5. Zero = breakeven. Simulation compounds trades in order.</div>
+</section>
+<section class="stack">
+<div class="two">
+<div><div class="cap">Overall stats</div>
+<table id="ov"></table></div>
+<div><div class="cap">Return simulation</div>
+<table><tr><td class="lbl">Start balance</td><td><input id="sb" inputmode="decimal"></td></tr>
+<tr><td class="lbl">Position size %</td><td><input id="ps" inputmode="decimal"></td></tr>
+<tr><td class="lbl">Current balance</td><td id="cb"></td></tr>
+<tr class="big"><td class="lbl">Return %</td><td id="rt"></td></tr></table></div>
+</div>
+<div><div class="cap">By setup</div>
+<table id="bs"></table></div>
+<div class="two">
+<div><div class="cap">Expected return</div><table id="ex"></table></div>
+<div><div class="cap">Average % gain inputs</div><table id="sa"></table></div>
+</div>
+</section>
+</main>
+<script>
+var N=40,KEY="tj_v1",SETUPS=["Breakout","Pullback"];
+var S={rows:[],sb:100000,ps:100,sales:[5,10,15]};
+for(var i=0;i<N;i++)S.rows.push({s:"",t:"",p:""});
+try{var d=JSON.parse(localStorage.getItem(KEY));if(d&&d.rows)S=d}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+var $=function(i){return document.getElementById(i)};
+var f=function(x,d){return isNaN(x)?"":x.toLocaleString("en-US",{minimumFractionDigits:d||0,maximumFractionDigits:d||0})};
+var pc=function(x){return f(x,2)+"%"};
+var tb=document.querySelector("#jt tbody"),rowEls=[];
+for(var i=0;i<N;i++){
+ var tr=document.createElement("tr");
+ tr.innerHTML='<td>'+(i+1)+'</td><td><select><option value="">–</option>'+SETUPS.map(function(s){return"<option>"+s+"</option>"}).join("")+'</select></td><td><input maxlength="8" style="text-transform:uppercase"></td><td><input inputmode="decimal"></td><td></td><td></td><td></td><td></td>';
+ tb.appendChild(tr);rowEls.push(tr);
+ (function(i,tr){
+  var sel=tr.querySelector("select"),ti=tr.querySelectorAll("input")[0],pi=tr.querySelectorAll("input")[1];
+  sel.value=S.rows[i].s;ti.value=S.rows[i].t;pi.value=S.rows[i].p;
+  sel.onchange=function(){S.rows[i].s=sel.value;calc()};
+  ti.oninput=function(){S.rows[i].t=ti.value.toUpperCase();save()};
+  pi.oninput=function(){S.rows[i].p=pi.value;calc()};
+ })(i,tr);
+}
+function num(v){v=String(v).replace(/[%+\s,]/g,"");return v===""?NaN:parseFloat(v)}
+function stats(list){
+ var w=list.filter(function(x){return x>0}),l=list.filter(function(x){return x<0}),b=list.filter(function(x){return x===0});
+ var sum=function(a){return a.reduce(function(s,x){return s+x},0)};
+ var ag=w.length?sum(w)/w.length:0,al=l.length?Math.abs(sum(l))/l.length:0,dec=w.length+l.length;
+ return{w:w.length,l:l.length,b:b.length,dec:dec,all:list.length,ag:ag,al:al,wp:dec?w.length/dec*100:0,rr:al?ag/al:0};
+}
+function row(a){return"<tr>"+a.join("")+"</tr>"}
+function c(t,cl){return"<td"+(cl?' class="'+cl+'"':"")+">"+t+"</td>"}
+function calc(){
+ var all=[],bal=S.sb=num($("sb").value)||0;
+ S.ps=isNaN(num($("ps").value))?100:num($("ps").value);
+ var start=bal;
+ rowEls.forEach(function(tr,i){
+  var v=num(S.rows[i].p),td=tr.children;
+  if(isNaN(v)){td[4].textContent=td[5].textContent=td[6].textContent=td[7].textContent="";td[4].className=td[3].className="";return}
+  all.push({v:v,s:S.rows[i].s});
+  var pos=bal*S.ps/100,gl=pos*v/100;bal+=gl;
+  td[4].textContent=v>0?"Win":v<0?"Loss":"BE";td[4].className=v>0?"w":v<0?"l":"b";
+  td[3].className=v>0?"p":v<0?"n":"";
+  td[5].textContent=f(pos);td[6].textContent=f(gl);td[6].className=gl>0?"p":gl<0?"n":"";td[7].textContent=f(bal);
+ });
+ var o=stats(all.map(function(x){return x.v}));
+ $("ov").innerHTML=row([c("Total trades","lbl"),c(o.dec),c("Avg gain","lbl w"),c(pc(o.ag),"w")])+
+  row([c("Total wins","lbl"),c(o.w),c("Avg loss","lbl l"),c(pc(o.al),"l")])+
+  row([c("Total losses","lbl"),c(o.l),c("Win %","lbl"),c(pc(o.wp))])+
+  row([c("Total BE","lbl b"),c(o.b,"b"),c("Risk/Reward","lbl"),c(f(o.rr,2))])+
+  row([c("Trades w/ BE","lbl b"),c(o.all,"b"),c("% BE trades","lbl b"),c(o.all?pc(o.b/o.all*100):"0.00%","b")]);
+ var h='<tr><th>Setup</th><th>Avg gain</th><th>Avg loss</th><th>R/R</th><th>Wins</th><th>Losses</th><th>Win %</th></tr>';
+ SETUPS.forEach(function(s){var q=stats(all.filter(function(x){return x.s===s}).map(function(x){return x.v}));
+  h+=row([c(s,"lbl"),c(pc(q.ag),"w"),c(pc(q.al),"l"),c(f(q.rr,2),"w"),c(q.w),c(q.l),c(pc(q.wp),"w")])});
+ $("bs").innerHTML=h;
+ var p1=o.wp/100,p2=o.dec?1-p1:0,e1=p1*o.ag,e2=p2*o.al,be=o.rr?100/(1+o.rr):0;
+ $("ex").innerHTML='<tr><th></th><th>Prob</th><th>Return</th><th>p × r</th></tr>'+
+  row([c("Win","lbl"),c(f(p1,2)),c(pc(o.ag)),c(pc(e1))])+row([c("Loss","lbl"),c(f(p2,2)),c(pc(o.al)),c(pc(e2))])+
+  row([c("Expectancy","lbl"),'<td colspan="3" class="big '+(e1-e2>=0?"p":"n")+'">'+pc(e1-e2)+' per trade</td>'])+
+  row([c("Breakeven win %","lbl"),'<td colspan="3">'+pc(be)+'</td>']);
+ $("cb").textContent=f(bal);
+ var r=start?(bal/start-1)*100:0;$("rt").textContent=pc(r);$("rt").className=r>0?"p":r<0?"n":"";
+ var sa=S.sales.map(function(x){return num(x)||0}),av=sa.reduce(function(s,x){return s+x},0)/3;
+ save();
+ var ss=document.querySelectorAll("#sa input");if(!ss.length){
+  $("sa").innerHTML=[0,1,2].map(function(i){return'<tr><td class="lbl y">Sale '+(i+1)+'</td><td class="y"><input data-i="'+i+'" inputmode="decimal" value="'+S.sales[i]+'"></td></tr>'}).join("")+'<tr><td class="lbl w">Avg %</td><td class="w" id="av"></td></tr>';
+  document.querySelectorAll("#sa input").forEach(function(el){el.oninput=function(){S.sales[el.dataset.i]=el.value;calc()}});
+ }
+ $("av").textContent=pc(av);
+}
+$("sb").value=S.sb;$("ps").value=S.ps;
+$("sb").oninput=$("ps").oninput=calc;
+var armed=false;
+$("clr").onclick=function(){
+ if(!armed){armed=true;$("clr").textContent="Click again to confirm";setTimeout(function(){armed=false;$("clr").textContent="Clear all"},3000);return}
+ S.rows.forEach(function(r,i){r.s=r.t=r.p="";var e=rowEls[i];e.querySelector("select").value="";e.querySelectorAll("input")[0].value="";e.querySelectorAll("input")[1].value=""});
+ armed=false;$("clr").textContent="Clear all";calc();
+};
+document.addEventListener("focusin",function(e){var t=e.target;if(t.tagName=="INPUT"){setTimeout(function(){try{t.select()}catch(x){}},0)}});
+document.addEventListener("mouseup",function(e){if(e.target.tagName=="INPUT")e.preventDefault()});
+calc();
+</script>
+</body>
+</html>
